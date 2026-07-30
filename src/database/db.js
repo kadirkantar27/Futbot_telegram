@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Veritabanı dosyasını ana proje klasöründe 'futbol_bot.db' adıyla oluştururuz.
-const dbPath = path.resolve(__dirname, '../../futbol_bot.db');
+const dbPath = path.resolve(__dirname, '../../data/futbol_bot.db');
 
 const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
