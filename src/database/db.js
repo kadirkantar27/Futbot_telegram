@@ -12,6 +12,11 @@ const db = new sqlite3.Database(dbPath, (err) => {
     }
 });
 
+db.serialize(() => {
+    db.run("PRAGMA journal_mode=WAL;"); // Eşzamanlı okuma/yazma izni
+    db.run("PRAGMA busy_timeout=5000;"); // Kilitliyse hata verme, 5 saniye bekle
+});
+
 // Tabloları kuruyoruz
 db.serialize(() => {
     // Kullanıcıların genel verileri (Puan ve son kart çekim zamanı)

@@ -98,6 +98,13 @@ bot.onText(/\/mac/, async (msg) => {
     bot.sendMessage(chatId, `🏟 **${username}** sahaya çıktı ve kendine rakip arıyor!\n\nMaçı kabul etmek için aşağıdaki butona tıkla!`, options);
 });
 
+
+// Telegram API hatalarını yut ve botu kapatma
+bot.on('polling_error', (error) => {
+    console.log("Telegram Bağlantı Dalgalanması:", error.message);
+});
+
+
 // CALLBACK QUERY (Buton Tıklamalarını Yakalama ve Animasyon)
 bot.on('callback_query', async (query) => {
     const data = query.data; // Eksik olan tanım buraya eklendi!
@@ -222,4 +229,13 @@ bot.on('callback_query', async (query) => {
         
         bot.answerCallbackQuery(query.id).catch(err => console.log(err));
     }
+});
+
+// Tüm beklenmeyen hataları yakala ve botun çökmesini engelle
+process.on('uncaughtException', (err) => {
+    console.error('Ölümcül Hata Yakalandı:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Yakalanmayan Promise Hatası:', reason);
 });
