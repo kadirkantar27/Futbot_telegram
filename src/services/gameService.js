@@ -276,9 +276,15 @@ async function getTop10() {
     if (users.length === 0) return "Henüz kimse puan kazanmadı.";
 
     let msg = "🏆 **GLOBAL LİDERLİK TABLOSU** 🏆\n\n";
+    
+    // 1. Önce sadece oyuncuları listeye ekliyoruz
     users.forEach((u, index) => {
         msg += `${index + 1}. ${u.username} - ${u.points} Puan\n`;
     });
+    
+    // 2. Döngü bittikten sonra, listenin en altına bilgi notunu BİR KERE ekliyoruz
+    msg += `\n🏅 **Geçen haftanın şampiyonlarını görmek için /gecenhafta komutunu kullanabilirsin!**`;
+
     return msg;
 }
 
