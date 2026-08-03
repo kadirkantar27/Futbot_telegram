@@ -111,27 +111,63 @@ bot.onText(/\/mac/, async (msg) => {
     bot.sendMessage(chatId, `🏟 **${username}** sahaya çıktı ve kendine rakip arıyor!\n\nMaçı kabul etmek için aşağıdaki butona tıkla!`, options);
 });
 
+
+// GİZLİ ADMİN KOMUTU: Geceyi beklemeden haftayı bitirir
+bot.onText(/\/sezonbitir/, async (msg) => {
+    const ADMIN_ID = 123456789; // Kendi ID'ni yazmayı unutma!
+    if (msg.from.id !== ADMIN_ID) return;
+
+    try {
+        // 1. Yeni geçmiş tablosunu hazırla (Username de dahil edildi)
+        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
+        await db.run("DELETE FROM gecen_hafta");
+        
+        // 2. Mevcut haftanın puan sıralamasını çek (Sadece puanı 0'dan büyük olanlar)
+        const top10 = await db.all("SELECT user_id, username, points FROM users WHERE points > 0 ORDER BY points DESC LIMIT 10");
+        
+        // 3. Geçmiş haftaya isimleri ve puanlarıyla birlikte kaydet
+        for (const user of top10) {
+            await db.run("INSERT INTO gecen_hafta (user_id, username, points) VALUES (?, ?, ?)", [user.user_id, user.username, user.points]);
+        }
+        
+        // 4. ASIL ÇÖZÜM: Hem envanteri hem de puanları SIFIRLA
+        await db.run("DELETE FROM inventory"); // Tüm kartları siler
+        await db.run("UPDATE users SET points = 0"); // Herkesin puanını 0 yapar!
+        
+        bot.sendMessage(msg.chat.id, "✅ Sezon bitirildi! Envanterler ve PUANLAR tamamen sıfırlandı, sonuçlar /gecenhafta'ya eklendi.");
+    } catch (err) {
+        bot.sendMessage(msg.chat.id, "❌ Hata: " + err.message);
+    }
+});
+
 // KULLANICI KOMUTU: Geçen Haftanın Şampiyonları
 bot.onText(/\/gecenhafta/, async (msg) => {
     const chatId = msg.chat.id;
 
     try {
-        // Hata vermemesi için tablonun varlığını garantiye alalım
-        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id TEXT, toplam_guc INTEGER)");
+        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
 
         // Geçen haftanın verilerini çek
-        const eskiTop10 = await db.all("SELECT user_id, toplam_guc FROM gecen_hafta ORDER BY toplam_guc DESC");
+        const eskiTop10 = await db.all("SELECT username, points FROM gecen_hafta ORDER BY points DESC");
 
-        // Eğer tablo boşsa (henüz hiç pazar gecesi geçmediyse)
         if (eskiTop10.length === 0) {
             return bot.sendMessage(chatId, "🤷‍♂️ Henüz tamamlanmış bir hafta yok. İlk şampiyonlar bu Pazar belli olacak!");
         }
 
-        // Liste doluysa mesajı oluştur
+        // Şık liste formatı
         let mesaj = "🏆 **GEÇEN HAFTANIN ŞAMPİYONLARI** 🏆\n\n";
         
         eskiTop10.forEach((user, index) => {
-            mesaj += `${index + 1}. [ID: ${user.user_id}] - ${user.toplam_guc} Puan\n`;
+            // İlk 3'e özel madalya emojileri
+            let madalya = "🏅";
+            if (index === 0) madalya = "🥇";
+            if (index === 1) madalya = "🥈";
+            if (index === 2) madalya = "🥉";
+
+            // İsim yoksa 'Bilinmeyen Menajer' yaz
+            const isim = user.username ? user.username : "Gizemli Menajer";
+            
+            mesaj += `${madalya} **${index + 1}. ${isim}** - ${user.points} Puan\n`;
         });
 
         bot.sendMessage(chatId, mesaj, { parse_mode: "Markdown" });
@@ -141,29 +177,6 @@ bot.onText(/\/gecenhafta/, async (msg) => {
         console.error("Geçen hafta hatası:", err);
     }
 });
-
-// GİZLİ ADMİN KOMUTU: Geceyi beklemeden haftayı bitirir
-bot.onText(/\/sezonbitir/, async (msg) => {
-    const ADMIN_ID = 7365398035; // Kendi ID'ni yaz
-    if (msg.from.id !== ADMIN_ID) return;
-
-    try {
-        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id TEXT, toplam_guc INTEGER)");
-        await db.run("DELETE FROM gecen_hafta");
-        
-        const top10 = await db.all("SELECT user_id, SUM(ovr) as toplam_guc FROM inventory GROUP BY user_id ORDER BY toplam_guc DESC LIMIT 10");
-        
-        for (const user of top10) {
-            await db.run("INSERT INTO gecen_hafta (user_id, toplam_guc) VALUES (?, ?)", [user.user_id, user.toplam_guc]);
-        }
-        await db.run("DELETE FROM inventory");
-        
-        bot.sendMessage(msg.chat.id, "✅ Manuel sezon bitirme başarılı! Kartlar sıfırlandı, sonuçlar /gecenhafta komutuna aktarıldı.");
-    } catch (err) {
-        bot.sendMessage(msg.chat.id, "❌ Hata: " + err.message);
-    }
-});
-
 
 // Telegram API hatalarını yut ve botu kapatma
 bot.on('polling_error', (error) => {
@@ -309,33 +322,21 @@ process.on('unhandledRejection', (reason, promise) => {
 // HER PAZAR SAAT 00:00'DA ÇALIŞACAK GİZLİ SIFIRLAMA GÖREVİ
 cron.schedule('0 0 * * 0', async () => {
     try {
-        console.log("Haftalık sıfırlama işlemi başladı...");
-
-        // 1. Geçmişi tutacağımız tabloyu hazırla (Eğer yoksa otomatik oluşturur)
-        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id TEXT, toplam_guc INTEGER)");
-
-        // 2. Bir önceki haftanın eski verilerini temizle
+        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
         await db.run("DELETE FROM gecen_hafta");
 
-        // 3. Güncel (Biten) haftanın Top 10'unu bul
-        const top10 = await db.all(`
-            SELECT user_id, SUM(ovr) as toplam_guc 
-            FROM inventory 
-            GROUP BY user_id 
-            ORDER BY toplam_guc DESC 
-            LIMIT 10
-        `);
+        // Puanlara göre Top 10'u bul
+        const top10 = await db.all("SELECT user_id, username, points FROM users WHERE points > 0 ORDER BY points DESC LIMIT 10");
 
-        // 4. Yeni Top 10'u "gecen_hafta" tablosuna kaydet
         for (const user of top10) {
-            await db.run("INSERT INTO gecen_hafta (user_id, toplam_guc) VALUES (?, ?)", [user.user_id, user.toplam_guc]);
+            await db.run("INSERT INTO gecen_hafta (user_id, username, points) VALUES (?, ?, ?)", [user.user_id, user.username, user.points]);
         }
 
-        // 5. Oyuncuların envanterini (Kartları) tamamen sıfırla
+        // Hem envanteri hem de kullanıcı puanlarını sıfırla
         await db.run("DELETE FROM inventory");
+        await db.run("UPDATE users SET points = 0");
         
-        console.log("✅ Geçen hafta sonuçları kaydedildi ve tüm envanterler sıfırlandı!");
-
+        console.log("✅ Haftalık sıfırlama yapıldı, puanlar 0'landı.");
     } catch (err) {
         console.error("Sıfırlama sırasında kritik hata:", err);
     }
