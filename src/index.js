@@ -114,15 +114,15 @@ bot.onText(/\/mac/, async (msg) => {
 
 // GİZLİ ADMİN KOMUTU: Geceyi beklemeden haftayı bitirir
 bot.onText(/\/sezonbitir/, async (msg) => {
-    const ADMIN_ID = 7365398035; // Kendi ID'ni yazmayı unutma!
+    const ADMIN_ID = 123456789; // Kendi ID'ni yazmayı unutma!
     if (msg.from.id !== ADMIN_ID) return;
 
     try {
-        // 1. Yeni geçmiş tablosunu hazırla (Username de dahil edildi)
-        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
-        await db.run("DELETE FROM gecen_hafta");
+        // 1. ESKİ TABLOYU KÖKTEN SİL VE YENİ SÜTUNLARLA OLUŞTUR (Hata Çözümü)
+        await db.run("DROP TABLE IF EXISTS gecen_hafta");
+        await db.run("CREATE TABLE gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
         
-        // 2. Mevcut haftanın puan sıralamasını çek (Sadece puanı 0'dan büyük olanlar)
+        // 2. Mevcut haftanın puan sıralamasını çek
         const top10 = await db.all("SELECT user_id, username, points FROM users WHERE points > 0 ORDER BY points DESC LIMIT 10");
         
         // 3. Geçmiş haftaya isimleri ve puanlarıyla birlikte kaydet
@@ -130,9 +130,9 @@ bot.onText(/\/sezonbitir/, async (msg) => {
             await db.run("INSERT INTO gecen_hafta (user_id, username, points) VALUES (?, ?, ?)", [user.user_id, user.username, user.points]);
         }
         
-        // 4. ASIL ÇÖZÜM: Hem envanteri hem de puanları SIFIRLA
-        await db.run("DELETE FROM inventory"); // Tüm kartları siler
-        await db.run("UPDATE users SET points = 0"); // Herkesin puanını 0 yapar!
+        // 4. Hem envanteri hem de puanları SIFIRLA
+        await db.run("DELETE FROM inventory"); 
+        await db.run("UPDATE users SET points = 0"); 
         
         bot.sendMessage(msg.chat.id, "✅ Sezon bitirildi! Envanterler ve PUANLAR tamamen sıfırlandı, sonuçlar /gecenhafta'ya eklendi.");
     } catch (err) {
@@ -322,8 +322,9 @@ process.on('unhandledRejection', (reason, promise) => {
 // HER PAZAR SAAT 00:00'DA ÇALIŞACAK GİZLİ SIFIRLAMA GÖREVİ
 cron.schedule('0 0 * * 0', async () => {
     try {
-        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
-        await db.run("DELETE FROM gecen_hafta");
+        // Eski tabloyu kökten sil ve yeni yapıyla oluştur
+        await db.run("DROP TABLE IF EXISTS gecen_hafta");
+        await db.run("CREATE TABLE gecen_hafta (user_id INTEGER, username TEXT, points INTEGER)");
 
         // Puanlara göre Top 10'u bul
         const top10 = await db.all("SELECT user_id, username, points FROM users WHERE points > 0 ORDER BY points DESC LIMIT 10");
