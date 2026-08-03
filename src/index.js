@@ -114,7 +114,7 @@ bot.onText(/\/mac/, async (msg) => {
 
 // GİZLİ ADMİN KOMUTU: Geceyi beklemeden haftayı bitirir
 bot.onText(/\/sezonbitir/, async (msg) => {
-    const ADMIN_ID = 123456789; // Kendi ID'ni yazmayı unutma!
+    const ADMIN_ID = 7365398035; // Kendi ID'ni yazmayı unutma!
     if (msg.from.id !== ADMIN_ID) return;
 
     try {
