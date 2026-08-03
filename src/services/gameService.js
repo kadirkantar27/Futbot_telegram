@@ -162,14 +162,14 @@ async function simulateLiveMatch(playerA_Id, playerA_Name, playerB_Id, playerB_N
     let powerB = squadB.reduce((sum, p) => sum + p.ovr, 0);
 
     // 2. TEMEL ŞANS (Maç başı standart 0, 1 veya 2 gol atma potansiyeli)
-    let goalsA = Math.floor(Math.random() * 3); 
-    let goalsB = Math.floor(Math.random() * 3);
+    let goalsA = Math.floor(Math.random() * 4); 
+    let goalsB = Math.floor(Math.random() * 4);
 
     // 3. GÜÇ FARKI ETKİSİ (Böleni 50 yaptık - 50 fark sadece 1 gol etki edecek)
     const diff = powerA - powerB;
     
-    let diffBoostA = Math.round(diff / 50);
-    let diffBoostB = Math.round(-diff / 50);
+    let diffBoostA = Math.round(diff / 40);
+    let diffBoostB = Math.round(-diff / 40);
     
     // REKABET KİLİDİ: Güç farkı avantajını maksimum +2 ile sınırlandırdık
     goalsA += Math.min(2, Math.max(-2, diffBoostA));
@@ -177,9 +177,9 @@ async function simulateLiveMatch(playerA_Id, playerA_Name, playerB_Id, playerB_N
 
     // 4. DENGELEYİCİ MOMENTUM (Maçta sadece tek bir kırılma anı olur)
     const momentum = Math.random();
-    if (momentum > 0.85) {
+    if (momentum > 0.80) {
         goalsA += 1; // %15 ihtimalle A takımı ekstra gol bulur
-    } else if (momentum < 0.15) {
+    } else if (momentum < 0.20) {
         goalsB += 1; // %15 ihtimalle B takımı ekstra gol bulur
     }
     // %70 ihtimalle maçta ekstra momentum golü olmaz, skorlar normal kalır.

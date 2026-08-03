@@ -4,6 +4,7 @@ const TelegramBot = telegramBotApi.default || telegramBotApi; // Hem ESM hem Com
 const gameService = require('./services/gameService');
 const db = require('./database/db');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const cron = require('node-cron');
 
 // Token'ı .env dosyasından alıyoruz
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -13,7 +14,19 @@ console.log("Futbol Kart Botu aktif edildi ve dinlemede...");
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    const text = `⚽ **FUT - Rüya Takım Botuna Hoş Geldin!** ⚽\n\nKomutlar:\n/kartcek - 3 saatte beş rastgele kart kazan\n/kadrokur - En iyi 5'li kadronu otomatik kur\n/mac - Grupta meydan okuma başlat\n/puanim - Ligdeki puanını gör\n/kartlarim - Sahip olduğun kartları gör\n/top10 - Global liderlik tablosu`;
+    const text = `⚽ **FUT - Rüya Takım Botuna Hoş Geldin!** ⚽
+
+    📌 **Komutlar:**
+    /kartcek - 3 saatte beş rastgele kart kazan
+    /kadrokur - En iyi 5'li kadronu otomatik kur
+    /mac - Grupta meydan okuma başlat
+    /puanim - Ligdeki puanını gör
+    /kartlarim - Sahip olduğun kartları gör
+    /top10 - Global liderlik tablosu (Güncel Hafta)
+    /gecenhafta - Geçen haftanın şampiyonları
+
+⚠️ **ÖNEMLİ:** Her Pazar gecesi saat 00:00'da sezon sıfırlanır, tüm kartlar silinir ve liderlik yarışı herkes için sıfırdan başlar! Yeni sezonda başarılar! 🏆`;
+
     bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
 });
 
@@ -96,6 +109,59 @@ bot.onText(/\/mac/, async (msg) => {
     };
 
     bot.sendMessage(chatId, `🏟 **${username}** sahaya çıktı ve kendine rakip arıyor!\n\nMaçı kabul etmek için aşağıdaki butona tıkla!`, options);
+});
+
+// KULLANICI KOMUTU: Geçen Haftanın Şampiyonları
+bot.onText(/\/gecenhafta/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    try {
+        // Hata vermemesi için tablonun varlığını garantiye alalım
+        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id TEXT, toplam_guc INTEGER)");
+
+        // Geçen haftanın verilerini çek
+        const eskiTop10 = await db.all("SELECT user_id, toplam_guc FROM gecen_hafta ORDER BY toplam_guc DESC");
+
+        // Eğer tablo boşsa (henüz hiç pazar gecesi geçmediyse)
+        if (eskiTop10.length === 0) {
+            return bot.sendMessage(chatId, "🤷‍♂️ Henüz tamamlanmış bir hafta yok. İlk şampiyonlar bu Pazar belli olacak!");
+        }
+
+        // Liste doluysa mesajı oluştur
+        let mesaj = "🏆 **GEÇEN HAFTANIN ŞAMPİYONLARI** 🏆\n\n";
+        
+        eskiTop10.forEach((user, index) => {
+            mesaj += `${index + 1}. [ID: ${user.user_id}] - ${user.toplam_guc} Puan\n`;
+        });
+
+        bot.sendMessage(chatId, mesaj, { parse_mode: "Markdown" });
+
+    } catch (err) {
+        bot.sendMessage(chatId, "❌ Sonuçlar getirilirken hata oluştu.");
+        console.error("Geçen hafta hatası:", err);
+    }
+});
+
+// GİZLİ ADMİN KOMUTU: Geceyi beklemeden haftayı bitirir
+bot.onText(/\/sezonbitir/, async (msg) => {
+    const ADMIN_ID = 7365398035; // Kendi ID'ni yaz
+    if (msg.from.id !== ADMIN_ID) return;
+
+    try {
+        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id TEXT, toplam_guc INTEGER)");
+        await db.run("DELETE FROM gecen_hafta");
+        
+        const top10 = await db.all("SELECT user_id, SUM(ovr) as toplam_guc FROM inventory GROUP BY user_id ORDER BY toplam_guc DESC LIMIT 10");
+        
+        for (const user of top10) {
+            await db.run("INSERT INTO gecen_hafta (user_id, toplam_guc) VALUES (?, ?)", [user.user_id, user.toplam_guc]);
+        }
+        await db.run("DELETE FROM inventory");
+        
+        bot.sendMessage(msg.chat.id, "✅ Manuel sezon bitirme başarılı! Kartlar sıfırlandı, sonuçlar /gecenhafta komutuna aktarıldı.");
+    } catch (err) {
+        bot.sendMessage(msg.chat.id, "❌ Hata: " + err.message);
+    }
 });
 
 
@@ -238,4 +304,42 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Yakalanmayan Promise Hatası:', reason);
+});
+
+// HER PAZAR SAAT 00:00'DA ÇALIŞACAK GİZLİ SIFIRLAMA GÖREVİ
+cron.schedule('0 0 * * 0', async () => {
+    try {
+        console.log("Haftalık sıfırlama işlemi başladı...");
+
+        // 1. Geçmişi tutacağımız tabloyu hazırla (Eğer yoksa otomatik oluşturur)
+        await db.run("CREATE TABLE IF NOT EXISTS gecen_hafta (user_id TEXT, toplam_guc INTEGER)");
+
+        // 2. Bir önceki haftanın eski verilerini temizle
+        await db.run("DELETE FROM gecen_hafta");
+
+        // 3. Güncel (Biten) haftanın Top 10'unu bul
+        const top10 = await db.all(`
+            SELECT user_id, SUM(ovr) as toplam_guc 
+            FROM inventory 
+            GROUP BY user_id 
+            ORDER BY toplam_guc DESC 
+            LIMIT 10
+        `);
+
+        // 4. Yeni Top 10'u "gecen_hafta" tablosuna kaydet
+        for (const user of top10) {
+            await db.run("INSERT INTO gecen_hafta (user_id, toplam_guc) VALUES (?, ?)", [user.user_id, user.toplam_guc]);
+        }
+
+        // 5. Oyuncuların envanterini (Kartları) tamamen sıfırla
+        await db.run("DELETE FROM inventory");
+        
+        console.log("✅ Geçen hafta sonuçları kaydedildi ve tüm envanterler sıfırlandı!");
+
+    } catch (err) {
+        console.error("Sıfırlama sırasında kritik hata:", err);
+    }
+}, {
+    scheduled: true,
+    timezone: "Europe/Istanbul"
 });
